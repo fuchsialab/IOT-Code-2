@@ -1,0 +1,93 @@
+#include <Wire.h>
+#include "MAX30100_PulseOximeter.h"
+#include <ESP8266WiFi.h>
+#include "FirebaseESP8266.h"	
+#include "Wire.h"
+
+#define REPORTING_PERIOD_MS 1000
+
+#define WIFI_SSID "MJ"
+#define WIFI_PASSWORD "good54321"
+
+#define FIREBASE_HOST "iotweather-f233f-default-rtdb.firebaseio.com/" 
+#define FIREBASE_AUTH "mBkvm7ZeFvWePM0mSYBUcdgj3k80TUK9tVs2uozL"
+
+FirebaseData firebaseData;
+FirebaseData ledData;
+FirebaseJson json;
+ 
+// Connections : SCL PIN - D1 , SDA PIN - D2 , INT PIN - D0
+PulseOximeter pox;
+MAX30100 maxim;
+ 
+int BPM, SpO2;
+uint32_t tsLastReport = 0;
+ 
+ 
+void onBeatDetected()
+{
+    Serial.println("Beat Detected!");
+   
+}
+ 
+void setup()
+{
+    Serial.begin(115200);
+  
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print("Connecting to Wi-Fi");
+    while (WiFi.status() != WL_CONNECTED)
+    {
+      Serial.print(".");
+      delay(300);
+    }
+ 
+    Serial.print("Initializing Pulse Oximeter..");
+ 
+    if (!pox.begin())
+    {
+         Serial.println("FAILED");
+         for(;;);
+    }
+    else
+    {
+       
+         Serial.println("SUCCESS");
+         pox.setOnBeatDetectedCallback(onBeatDetected);
+    }
+
+     pox.begin();
+     pox.setOnBeatDetectedCallback(onBeatDetected);
+     pox.setIRLedCurrent(MAX30100_LED_CURR_24MA);
+
+     Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+     Firebase.reconnectWiFi(true);
+
+ 
+}
+ 
+void loop()
+{
+    pox.update();
+ 
+    BPM = pox.getHeartRate();
+    SpO2 = pox.getSpO2();
+
+     if (millis() - tsLastReport > REPORTING_PERIOD_MS)
+    {
+        Serial.print("Heart rate:");
+        Serial.print(BPM);
+        Serial.print("  SpO2: ");
+        Serial.print(SpO2);
+        Serial.println(" %");
+        
+        tsLastReport = millis();
+
+        if (BPM> 50 && SpO2 >80 && SpO2 <=100) {
+            Firebase.setInt(firebaseData, "/spo2", SpO2);
+            Firebase.setInt(firebaseData, "/bpm", BPM);
+
+            maxim.resetFifo();
+        }
+    }
+}
